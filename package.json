@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "check": "tsc --noEmit -p tsconfig.tests.json",
-    "test": "tsx --test tests/listagem.test.ts tests/recursos.test.ts tests/acesso.test.ts",
+    "test": "tsx --test tests/listagem.test.ts tests/recursos.test.ts tests/acesso.test.ts tests/beneficioRegras.test.ts",
     "test:mysql": "tsx --test tests/mysql.test.ts",
     "dev": "tsx watch src/server.ts",
     "knex": "tsx node_modules/knex/bin/cli.js",

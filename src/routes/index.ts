@@ -25,6 +25,6 @@ rotas.use("/colaboradores", autenticar, permitir("FCV"), colaboradorRoutes);
 rotas.use("/conveniados", autenticar, conveniadoRoutes);
 rotas.use("/campanhas", autenticar, campanhaEventoRoutes);
 rotas.use("/itens-campanha", autenticar, beneficioCampanhaRoutes);
-rotas.use("/utilizacoes", autenticar, permitir("FCV"), utilizacaoRoutes);
+rotas.use("/utilizacoes", autenticar, utilizacaoRoutes);
 rotas.use("/eu", autenticar, permitir("COLABORADOR", "CONVENIADO"), euRoutes);
 export default rotas;

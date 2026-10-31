@@ -8,7 +8,7 @@ export const beneficioConveniadoModel = {
     return listarRecurso(db, "ofertas", consulta);
   },
 
-  buscarPorId(id: number) {
+  async buscarPorId(id: number) {
     return db(TABELA).where({ id }).first();
   },
 

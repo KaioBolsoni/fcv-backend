@@ -11,6 +11,8 @@ import {
   beneficioCampanhaConveniadoModel,
   validarUtilizacaoOfertaCampanha,
 } from "../src/models/beneficioCampanhaConveniadoModel";
+import { beneficioConveniadoModel } from "../src/models/beneficioConveniadoModel";
+import { beneficioModel } from "../src/models/beneficioModel";
 import { utilizacaoModel } from "../src/models/utilizacaoModel";
 import utilizacaoRoutes from "../src/routes/utilizacaoRoutes";
 
@@ -112,22 +114,37 @@ function resposta(usuario = { id: 1, escopo: "FCV" }) {
 
 test("criar usa o colaborador autenticado e ignora colaborador_id do corpo", async () => {
   const buscarDados = acessoModel.buscarDados;
+  const buscarOferta = beneficioConveniadoModel.buscarPorId;
+  const contarHoje = beneficioModel.contarUsosHoje;
+  const buscarConfiguracao = beneficioModel.buscarConfiguracao;
+  const contarMes = beneficioModel.contarUsosMesAtual;
   const criar = utilizacaoModel.criar;
   const buscar = Object.getOwnPropertyDescriptor(utilizacaoModel, "buscarPorId");
   let dadosCriados: Record<string, unknown> | undefined;
   try {
     acessoModel.buscarDados = async () => ({ colaborador: { id: 42 }, conveniado: null });
+    beneficioConveniadoModel.buscarPorId = async () => ({ id: 8, beneficio_id: 5 });
+    beneficioModel.contarUsosHoje = async (usuarioId, beneficioId) => {
+      assert.equal(usuarioId, 20);
+      assert.equal(beneficioId, 5);
+      return 0;
+    };
+    beneficioModel.buscarConfiguracao = async () => ({
+      id: 5, nome: "Benefício teste", quantidade_maxima_utilizacoes: 4,
+    } as any);
+    beneficioModel.contarUsosMesAtual = async () => 0;
     utilizacaoModel.criar = async (dados) => { dadosCriados = dados; return 7; };
     Object.defineProperty(utilizacaoModel, "buscarPorId", { configurable: true, value: async () => ({ id: 7 }) });
     const { estado, res } = resposta({ id: 20, escopo: "COLABORADOR" });
     await utilizacaoController.criar({
       body: {
-        id: 100, colaborador_id: 999, valor_aplicado: 10, status: "APROVADA",
+        id: 100, colaborador_id: 999, beneficio_conveniado_id: 8, valor_aplicado: 10, status: "APROVADA",
         data_solicitacao: "2020-01-01", data_confirmacao: "2020-01-01",
         canal_validacao: "TERMINAL_IOT", token_qrcode: "forjado",
       },
     } as unknown as Request, res);
     assert.equal(dadosCriados?.colaborador_id, 42);
+    assert.equal(dadosCriados?.beneficio_conveniado_id, 8);
     assert.equal(dadosCriados?.valor_aplicado, 10);
     for (const campo of ["id", "status", "data_solicitacao", "data_confirmacao", "canal_validacao", "token_qrcode"]) {
       assert.equal(Object.hasOwn(dadosCriados!, campo), false);
@@ -135,8 +152,38 @@ test("criar usa o colaborador autenticado e ignora colaborador_id do corpo", asy
     assert.equal(estado.status, 201);
   } finally {
     acessoModel.buscarDados = buscarDados;
+    beneficioConveniadoModel.buscarPorId = buscarOferta;
+    beneficioModel.contarUsosHoje = contarHoje;
+    beneficioModel.buscarConfiguracao = buscarConfiguracao;
+    beneficioModel.contarUsosMesAtual = contarMes;
     utilizacaoModel.criar = criar;
     if (buscar) Object.defineProperty(utilizacaoModel, "buscarPorId", buscar);
+  }
+});
+
+test("criar bloqueia benefício comum que viola periodicidade sem persistir", async () => {
+  const buscarDados = acessoModel.buscarDados;
+  const buscarOferta = beneficioConveniadoModel.buscarPorId;
+  const contarHoje = beneficioModel.contarUsosHoje;
+  const criar = utilizacaoModel.criar;
+  let tentativasDeCriacao = 0;
+  try {
+    acessoModel.buscarDados = async () => ({ colaborador: { id: 42 }, conveniado: null });
+    beneficioConveniadoModel.buscarPorId = async () => ({ id: 8, beneficio_id: 5 });
+    beneficioModel.contarUsosHoje = async () => 1;
+    utilizacaoModel.criar = async () => { tentativasDeCriacao++; return 1; };
+    const { estado, res } = resposta({ id: 20, escopo: "COLABORADOR" });
+    await utilizacaoController.criar({
+      body: { beneficio_conveniado_id: 8, valor_aplicado: 10 },
+    } as Request, res);
+    assert.equal(estado.status, 400);
+    assert.deepEqual(estado.corpo, { erro: "Benefício já utilizado hoje" });
+    assert.equal(tentativasDeCriacao, 0);
+  } finally {
+    acessoModel.buscarDados = buscarDados;
+    beneficioConveniadoModel.buscarPorId = buscarOferta;
+    beneficioModel.contarUsosHoje = contarHoje;
+    utilizacaoModel.criar = criar;
   }
 });
 
@@ -182,7 +229,9 @@ test("criar valida vínculo de campanha antes de persistir", async () => {
     };
     Object.defineProperty(utilizacaoModel, "buscarPorId", { configurable: true, value: async () => ({ id: 7 }) });
     const { estado, res } = resposta();
-    await utilizacaoController.criar({ body: { beneficio_campanha_conveniado_id: 12 } } as Request, res);
+    await utilizacaoController.criar({
+      body: { beneficio_campanha_conveniado_id: 12, valor_aplicado: 10 },
+    } as Request, res);
     assert.equal(persistido, true);
     assert.equal(estado.status, 201);
   } finally {
@@ -235,7 +284,9 @@ test("criar bloqueia rejeição da função pública sem persistir", async (cont
     for (const caso of casos) {
       resultadoAtual = caso.resultado;
       const { estado, res } = resposta();
-      await utilizacaoController.criar({ body: { beneficio_campanha_conveniado_id: 12 } } as Request, res);
+      await utilizacaoController.criar({
+        body: { beneficio_campanha_conveniado_id: 12, valor_aplicado: 10 },
+      } as Request, res);
       assert.equal(estado.status, caso.status);
       assert.equal(tentativasDeCriacao, 0);
     }
@@ -282,6 +333,10 @@ test("atualizar bloqueia mudança para oferta inválida antes de persistir", asy
 
 test("rota permite POST do colaborador e mantém GET restrito a FCV", async () => {
   const buscarDados = acessoModel.buscarDados;
+  const buscarOferta = beneficioConveniadoModel.buscarPorId;
+  const contarHoje = beneficioModel.contarUsosHoje;
+  const buscarConfiguracao = beneficioModel.buscarConfiguracao;
+  const contarMes = beneficioModel.contarUsosMesAtual;
   const criar = utilizacaoModel.criar;
   const buscar = Object.getOwnPropertyDescriptor(utilizacaoModel, "buscarPorId");
   let colaboradorCriado: number | undefined;
@@ -298,13 +353,19 @@ test("rota permite POST do colaborador e mantém GET restrito a FCV", async () =
   assert.ok(address && typeof address !== "string");
   try {
     acessoModel.buscarDados = async () => ({ colaborador: { id: 42 }, conveniado: null });
+    beneficioConveniadoModel.buscarPorId = async () => ({ id: 8, beneficio_id: 5 });
+    beneficioModel.contarUsosHoje = async () => 0;
+    beneficioModel.buscarConfiguracao = async () => ({
+      id: 5, nome: "Benefício teste", quantidade_maxima_utilizacoes: 4,
+    } as any);
+    beneficioModel.contarUsosMesAtual = async () => 0;
     utilizacaoModel.criar = async (dados) => { colaboradorCriado = dados.colaborador_id; return 7; };
     Object.defineProperty(utilizacaoModel, "buscarPorId", { configurable: true, value: async () => ({ id: 7 }) });
     const base = `http://127.0.0.1:${address.port}`;
     const post = await fetch(base, {
       method: "POST",
       headers: { "content-type": "application/json", "x-escopo": "COLABORADOR" },
-      body: JSON.stringify({ colaborador_id: 999, valor_aplicado: 10 }),
+      body: JSON.stringify({ colaborador_id: 999, beneficio_conveniado_id: 8, valor_aplicado: 10 }),
     });
     const leitura = await fetch(base, { headers: { "x-escopo": "COLABORADOR" } });
     assert.equal(post.status, 201);
@@ -313,6 +374,10 @@ test("rota permite POST do colaborador e mantém GET restrito a FCV", async () =
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     acessoModel.buscarDados = buscarDados;
+    beneficioConveniadoModel.buscarPorId = buscarOferta;
+    beneficioModel.contarUsosHoje = contarHoje;
+    beneficioModel.buscarConfiguracao = buscarConfiguracao;
+    beneficioModel.contarUsosMesAtual = contarMes;
     utilizacaoModel.criar = criar;
     if (buscar) Object.defineProperty(utilizacaoModel, "buscarPorId", buscar);
   }

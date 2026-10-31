@@ -38,7 +38,7 @@ test("baseConsultaUtilizacaoBeneficio: compila query com joins e filtros correto
     assert.match(query.sql, /join `beneficio_conveniado` as `bc` on `bc`\.`id` = `utilizacao`\.`beneficio_conveniado_id`/i);
     assert.match(query.sql, /left join `colaborador` as `c` on `c`\.`id` = `utilizacao`\.`colaborador_id`/i);
     assert.match(query.sql, /`bc`\.`beneficio_id` = \?/i);
-    assert.match(query.sql, /(`c`\.`usuario_id` = \? or `utilizacao`\.`colaborador_id` = \?)/i);
+    assert.match(query.sql, /`c`\.`usuario_id` = \?/i);
     assert.match(query.sql, /`utilizacao`\.`status` not in \(\?, \?\)/i);
     assert.ok(query.bindings.includes(5));
     assert.ok(query.bindings.includes(10));

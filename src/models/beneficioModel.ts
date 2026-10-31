@@ -25,6 +25,56 @@ export interface HistoricoUsoBeneficio {
   usosMesAtual: number;
 }
 
+export class RegraBeneficioErro extends Error {
+  constructor(
+    mensagem: string,
+    readonly status = 400,
+  ) {
+    super(mensagem);
+    this.name = "RegraBeneficioErro";
+  }
+}
+
+export async function validarRegrasBeneficio(
+  usuarioId: string | number,
+  beneficioId: string | number,
+  dataReferencia: Date = new Date()
+): Promise<boolean> {
+  const idUsuario = Number(usuarioId);
+  const idBeneficio = Number(beneficioId);
+
+  if (!idUsuario || !idBeneficio) {
+    throw new RegraBeneficioErro(
+      "Identificadores de usuário e benefício são obrigatórios e devem ser válidos"
+    );
+  }
+
+  const usosHoje = await beneficioModel.contarUsosHoje(idUsuario, idBeneficio, dataReferencia);
+  if (usosHoje > 0) throw new RegraBeneficioErro("Benefício já utilizado hoje");
+
+  const beneficio =
+    (await beneficioModel.buscarConfiguracao(idBeneficio)) ??
+    (await beneficioModel.buscarPorId(idBeneficio));
+  if (!beneficio) throw new RegraBeneficioErro("Benefício não encontrado", 404);
+
+  const limiteMensal = Number(
+    beneficio.quantidade_maxima_utilizacoes ??
+      (beneficio as any).limiteMensal ??
+      (beneficio as any).limite
+  );
+  if (isNaN(limiteMensal) || limiteMensal <= 0) {
+    throw new RegraBeneficioErro(
+      "Benefício não possui limite mensal de utilizações válido configurado"
+    );
+  }
+
+  const usosMesAtual = await beneficioModel.contarUsosMesAtual(idUsuario, idBeneficio, dataReferencia);
+  if (usosMesAtual >= limiteMensal) {
+    throw new RegraBeneficioErro("Limite mensal de utilizações atingido");
+  }
+  return true;
+}
+
 export function obterIntervalosData(dataReferencia: Date = new Date()) {
   const ano = dataReferencia.getFullYear();
   const mes = dataReferencia.getMonth();
@@ -62,12 +112,7 @@ export function baseConsultaUtilizacaoBeneficio(
     )
     .leftJoin("colaborador as c", "c.id", "utilizacao.colaborador_id")
     .where("bc.beneficio_id", idBeneficio)
-    .where(function () {
-      this.where("c.usuario_id", idUsuario).orWhere(
-        "utilizacao.colaborador_id",
-        idUsuario
-      );
-    })
+    .where("c.usuario_id", idUsuario)
     .whereNotIn("utilizacao.status", ["REPROVADA", "ESTORNADA"]);
 }
 
@@ -181,4 +226,3 @@ export const beneficioModel = {
     return db(TABELA).where({ id: Number(id) }).del();
   },
 };
-

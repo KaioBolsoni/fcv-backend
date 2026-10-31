@@ -28,7 +28,7 @@ test("validarVinculos consulta e confere a cadeia completa", async () => {
     data_fim_campanha: "2026-10-31",
   };
   const validar = (data: Date) => beneficioCampanhaConveniadoModel.validarVinculos(12, data);
-  const referencia = new Date(2026, 9, 15, 12);
+  const referencia = new Date(Date.UTC(2026, 9, 15, 12));
   let resultado: unknown = valido;
   let consulta: Knex.Sql | undefined;
   cliente.runner = (builder) => ({
@@ -68,10 +68,17 @@ test("validarVinculos consulta e confere a cadeia completa", async () => {
       await assert.rejects(validar(referencia), { status: 400 });
     }
     resultado = valido;
-    for (const data of [new Date(2026, 9, 1, 0), new Date(2026, 9, 15, 12), new Date(2026, 9, 31, 23, 59)]) {
+    for (const data of [
+      new Date(Date.UTC(2026, 9, 1, 3)),
+      new Date(Date.UTC(2026, 9, 15, 12)),
+      new Date(Date.UTC(2026, 10, 1, 2, 59, 59, 999)),
+    ]) {
       assert.deepEqual(await validar(data), valido);
     }
-    for (const data of [new Date(2026, 8, 30, 23, 59), new Date(2026, 10, 1, 0)]) {
+    for (const data of [
+      new Date(Date.UTC(2026, 9, 1, 2, 59, 59, 999)),
+      new Date(Date.UTC(2026, 10, 1, 3)),
+    ]) {
       await assert.rejects(validar(data), { status: 400 });
     }
     await assert.rejects(validar(new Date(Number.NaN)), { status: 400 });

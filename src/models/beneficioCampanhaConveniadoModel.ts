@@ -3,13 +3,18 @@ import { listarRecurso } from "../queries/recursos";
 
 const TABELA = "beneficio_campanha_conveniado";
 
-function formatarDataLocal(data: Date): string {
+function formatarDataSaoPaulo(data: Date): string {
   if (Number.isNaN(data.getTime())) {
     throw new VinculoCampanhaInvalido("Data de referência inválida", 400);
   }
-  const mes = String(data.getMonth() + 1).padStart(2, "0");
-  const dia = String(data.getDate()).padStart(2, "0");
-  return `${data.getFullYear()}-${mes}-${dia}`;
+  const partes = new Intl.DateTimeFormat("en", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(data);
+  const parte = (tipo: string) => partes.find((item) => item.type === tipo)!.value;
+  return `${parte("year")}-${parte("month")}-${parte("day")}`;
 }
 
 function dataBancoValida(data: unknown): data is string {
@@ -79,7 +84,7 @@ export const beneficioCampanhaConveniadoModel = {
     if (!dataBancoValida(vinculo.data_inicio_campanha) || !dataBancoValida(vinculo.data_fim_campanha)) {
       throw new VinculoCampanhaInvalido("Período da campanha inválido", 400);
     }
-    const hoje = formatarDataLocal(dataReferencia);
+    const hoje = formatarDataSaoPaulo(dataReferencia);
     if (hoje < vinculo.data_inicio_campanha || hoje > vinculo.data_fim_campanha) {
       throw new VinculoCampanhaInvalido("Campanha ou evento fora do período de vigência", 400);
     }

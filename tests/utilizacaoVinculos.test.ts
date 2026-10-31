@@ -1,12 +1,56 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { Knex } from "knex";
 import type { Request, Response } from "express";
+import db from "../src/database/db";
 import { utilizacaoController } from "../src/controllers/utilizacaoController";
 import {
   beneficioCampanhaConveniadoModel,
   VinculoCampanhaInvalido,
 } from "../src/models/beneficioCampanhaConveniadoModel";
 import { utilizacaoModel } from "../src/models/utilizacaoModel";
+
+test("validarVinculos consulta e confere a cadeia completa", async () => {
+  const cliente = db.client as unknown as {
+    runner: (builder: Knex.QueryBuilder) => { run(): Promise<unknown> };
+  };
+  const runnerOriginal = cliente.runner;
+  const valido = {
+    oferta_id: 12,
+    beneficio_campanha_id_oferta: 3,
+    beneficio_campanha_id_encontrado: 3,
+    campanha_id_beneficio: 5,
+    campanha_id_encontrada: 5,
+  };
+  let resultado: unknown = valido;
+  let consulta: Knex.Sql | undefined;
+  cliente.runner = (builder) => ({
+    async run() {
+      const sql = builder.toSQL();
+      assert.ok(!Array.isArray(sql));
+      consulta = sql;
+      return resultado;
+    },
+  });
+  try {
+    assert.deepEqual(await beneficioCampanhaConveniadoModel.validarVinculos(12), valido);
+    assert.match(consulta!.sql, /left join `beneficio_campanha` as `beneficio`/);
+    assert.match(consulta!.sql, /left join `campanha_evento` as `campanha`/);
+    assert.ok(consulta!.bindings.includes(12));
+    resultado = undefined;
+    await assert.rejects(beneficioCampanhaConveniadoModel.validarVinculos(12), { status: 404 });
+    for (const inconsistente of [
+      { ...valido, beneficio_campanha_id_encontrado: 4 },
+      { ...valido, campanha_id_encontrada: 6 },
+      { ...valido, campanha_id_encontrada: null },
+    ]) {
+      resultado = inconsistente;
+      await assert.rejects(beneficioCampanhaConveniadoModel.validarVinculos(12), { status: 400 });
+    }
+  } finally {
+    cliente.runner = runnerOriginal;
+  }
+});
 
 function resposta() {
   const estado: { status?: number; corpo?: unknown } = {};

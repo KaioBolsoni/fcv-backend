@@ -6,7 +6,6 @@ import db from "../src/database/db";
 import { utilizacaoController } from "../src/controllers/utilizacaoController";
 import {
   beneficioCampanhaConveniadoModel,
-  VinculoCampanhaInvalido,
   validarUtilizacaoOfertaCampanha,
 } from "../src/models/beneficioCampanhaConveniadoModel";
 import { utilizacaoModel } from "../src/models/utilizacaoModel";
@@ -53,6 +52,7 @@ test("validarVinculos consulta e confere a cadeia completa", async () => {
     resultado = undefined;
     await assert.rejects(validar(referencia), { status: 404 });
     for (const inconsistente of [
+      { ...valido, beneficio_campanha_id_encontrado: null },
       { ...valido, beneficio_campanha_id_encontrado: 4 },
       { ...valido, campanha_id_encontrada: 6 },
       { ...valido, campanha_id_encontrada: null },
@@ -63,7 +63,9 @@ test("validarVinculos consulta e confere a cadeia completa", async () => {
     for (const [campo, status] of [
       ["status_oferta", "INATIVO"],
       ["status_beneficio", "INATIVO"],
+      ["status_campanha", "PLANEJADA"],
       ["status_campanha", "ENCERRADA"],
+      ["status_campanha", "CANCELADA"],
     ] as const) {
       resultado = { ...valido, [campo]: status };
       await assert.rejects(validar(referencia), { status: 400 });
@@ -134,22 +136,55 @@ test("criar valida vínculo de campanha antes de persistir", async () => {
   }
 });
 
-test("criar bloqueia vínculo inexistente ou inconsistente sem persistir", async () => {
-  const validar = beneficioCampanhaConveniadoModel.validarVinculos;
+test("criar bloqueia rejeição da função pública sem persistir", async (context) => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date(Date.UTC(2026, 9, 15, 12)) });
+  const cliente = db.client as unknown as {
+    runner: (builder: Knex.QueryBuilder) => { run(): Promise<unknown> };
+  };
+  const runnerOriginal = cliente.runner;
   const criar = utilizacaoModel.criar;
+  let tentativasDeCriacao = 0;
+  const vinculo = {
+    beneficio_campanha_id_oferta: 3, beneficio_campanha_id_encontrado: 3,
+    campanha_id_beneficio: 5, campanha_id_encontrada: 5,
+    status_oferta: "ATIVO", status_beneficio: "ATIVO", status_campanha: "ATIVA",
+    data_inicio_campanha: "", data_fim_campanha: "",
+  };
+  const partes = new Intl.DateTimeFormat("en", {
+    timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const hoje = `${partes.find(p => p.type === "year")!.value}-${partes.find(p => p.type === "month")!.value}-${partes.find(p => p.type === "day")!.value}`;
+  const deslocarDia = (dias: number) => {
+    const data = new Date(`${hoje}T00:00:00Z`);
+    data.setUTCDate(data.getUTCDate() + dias);
+    return data.toISOString().slice(0, 10);
+  };
+  const casos = [
+    { resultado: undefined, status: 404 },
+    { resultado: { ...vinculo, beneficio_campanha_id_encontrado: null }, status: 400 },
+    { resultado: { ...vinculo, beneficio_campanha_id_encontrado: 4 }, status: 400 },
+    { resultado: { ...vinculo, campanha_id_encontrada: null }, status: 400 },
+    { resultado: { ...vinculo, status_oferta: "INATIVO" }, status: 400 },
+    { resultado: { ...vinculo, status_beneficio: "INATIVO" }, status: 400 },
+    ...["PLANEJADA", "ENCERRADA", "CANCELADA"].map(status => ({ resultado: { ...vinculo, status_campanha: status }, status: 400 })),
+    { resultado: { ...vinculo, data_inicio_campanha: deslocarDia(1), data_fim_campanha: deslocarDia(2) }, status: 400 },
+    { resultado: { ...vinculo, data_inicio_campanha: deslocarDia(-2), data_fim_campanha: deslocarDia(-1) }, status: 400 },
+  ];
+  cliente.runner = () => ({
+    async run() { return resultadoAtual; },
+  });
+  let resultadoAtual: unknown;
   try {
-    utilizacaoModel.criar = async () => { throw new Error("Não deveria persistir"); };
-    for (const [status, mensagem] of [[404, "Oferta ausente"], [400, "Vínculo inválido"]] as const) {
-      beneficioCampanhaConveniadoModel.validarVinculos = async () => {
-        throw new VinculoCampanhaInvalido(mensagem, status);
-      };
+    utilizacaoModel.criar = async () => { tentativasDeCriacao++; return 1; };
+    for (const caso of casos) {
+      resultadoAtual = caso.resultado;
       const { estado, res } = resposta();
       await utilizacaoController.criar({ body: { beneficio_campanha_conveniado_id: 12 } } as Request, res);
-      assert.equal(estado.status, status);
-      assert.deepEqual(estado.corpo, { erro: mensagem });
+      assert.equal(estado.status, caso.status);
+      assert.equal(tentativasDeCriacao, 0);
     }
   } finally {
-    beneficioCampanhaConveniadoModel.validarVinculos = validar;
+    cliente.runner = runnerOriginal;
     utilizacaoModel.criar = criar;
   }
 });

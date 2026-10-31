@@ -21,6 +21,9 @@ test("validarVinculos consulta e confere a cadeia completa", async () => {
     beneficio_campanha_id_encontrado: 3,
     campanha_id_beneficio: 5,
     campanha_id_encontrada: 5,
+    status_oferta: "ATIVO",
+    status_beneficio: "ATIVO",
+    status_campanha: "ATIVA",
   };
   let resultado: unknown = valido;
   let consulta: Knex.Sql | undefined;
@@ -36,6 +39,9 @@ test("validarVinculos consulta e confere a cadeia completa", async () => {
     assert.deepEqual(await beneficioCampanhaConveniadoModel.validarVinculos(12), valido);
     assert.match(consulta!.sql, /left join `beneficio_campanha` as `beneficio`/);
     assert.match(consulta!.sql, /left join `campanha_evento` as `campanha`/);
+    assert.match(consulta!.sql, /`oferta`\.`status`/);
+    assert.match(consulta!.sql, /`beneficio`\.`status`/);
+    assert.match(consulta!.sql, /`campanha`\.`status`/);
     assert.ok(consulta!.bindings.includes(12));
     resultado = undefined;
     await assert.rejects(beneficioCampanhaConveniadoModel.validarVinculos(12), { status: 404 });
@@ -45,6 +51,14 @@ test("validarVinculos consulta e confere a cadeia completa", async () => {
       { ...valido, campanha_id_encontrada: null },
     ]) {
       resultado = inconsistente;
+      await assert.rejects(beneficioCampanhaConveniadoModel.validarVinculos(12), { status: 400 });
+    }
+    for (const [campo, status] of [
+      ["status_oferta", "INATIVO"],
+      ["status_beneficio", "INATIVO"],
+      ["status_campanha", "ENCERRADA"],
+    ] as const) {
+      resultado = { ...valido, [campo]: status };
       await assert.rejects(beneficioCampanhaConveniadoModel.validarVinculos(12), { status: 400 });
     }
   } finally {

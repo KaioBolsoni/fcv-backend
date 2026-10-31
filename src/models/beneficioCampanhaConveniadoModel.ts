@@ -33,6 +33,9 @@ export const beneficioCampanhaConveniadoModel = {
         "beneficio.id as beneficio_campanha_id_encontrado",
         "beneficio.campanha_id as campanha_id_beneficio",
         "campanha.id as campanha_id_encontrada",
+        "oferta.status as status_oferta",
+        "beneficio.status as status_beneficio",
+        "campanha.status as status_campanha",
       )
       .first();
 
@@ -46,6 +49,15 @@ export const beneficioCampanhaConveniadoModel = {
       Number(vinculo.campanha_id_beneficio) !== Number(vinculo.campanha_id_encontrada)
     ) {
       throw new VinculoCampanhaInvalido("Vínculo entre oferta, benefício e campanha inválido", 400);
+    }
+    if (vinculo.status_oferta !== "ATIVO") {
+      throw new VinculoCampanhaInvalido("Oferta de campanha inativa", 400);
+    }
+    if (vinculo.status_beneficio !== "ATIVO") {
+      throw new VinculoCampanhaInvalido("Benefício de campanha inativo", 400);
+    }
+    if (vinculo.status_campanha !== "ATIVA") {
+      throw new VinculoCampanhaInvalido("Campanha ou evento não está ativo", 400);
     }
 
     return vinculo;

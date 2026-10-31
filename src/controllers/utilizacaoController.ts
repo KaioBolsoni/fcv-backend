@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import {
-  beneficioCampanhaConveniadoModel,
   VinculoCampanhaInvalido,
+  validarUtilizacaoOfertaCampanha,
 } from "../models/beneficioCampanhaConveniadoModel";
 import { utilizacaoModel } from "../models/utilizacaoModel";
 
@@ -23,7 +23,7 @@ export const utilizacaoController = {
   async criar(req: Request, res: Response) {
     if (req.body?.beneficio_campanha_conveniado_id != null) {
       try {
-        await beneficioCampanhaConveniadoModel.validarVinculos(
+        await validarUtilizacaoOfertaCampanha(
           Number(req.body.beneficio_campanha_conveniado_id),
         );
       } catch (erro) {

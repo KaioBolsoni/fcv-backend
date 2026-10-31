@@ -109,3 +109,10 @@ export const beneficioCampanhaConveniadoModel = {
     return db(TABELA).where({ id }).del();
   },
 };
+
+export function validarUtilizacaoOfertaCampanha(
+  id: number,
+  dataReferencia?: Date,
+) {
+  return beneficioCampanhaConveniadoModel.validarVinculos(id, dataReferencia);
+}

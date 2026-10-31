@@ -7,6 +7,7 @@ import { utilizacaoController } from "../src/controllers/utilizacaoController";
 import {
   beneficioCampanhaConveniadoModel,
   VinculoCampanhaInvalido,
+  validarUtilizacaoOfertaCampanha,
 } from "../src/models/beneficioCampanhaConveniadoModel";
 import { utilizacaoModel } from "../src/models/utilizacaoModel";
 
@@ -27,7 +28,7 @@ test("validarVinculos consulta e confere a cadeia completa", async () => {
     data_inicio_campanha: "2026-10-01",
     data_fim_campanha: "2026-10-31",
   };
-  const validar = (data: Date) => beneficioCampanhaConveniadoModel.validarVinculos(12, data);
+  const validar = (data: Date) => validarUtilizacaoOfertaCampanha(12, data);
   const referencia = new Date(Date.UTC(2026, 9, 15, 12));
   let resultado: unknown = valido;
   let consulta: Knex.Sql | undefined;

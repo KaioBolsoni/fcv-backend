@@ -3,6 +3,21 @@ import { listarRecurso } from "../queries/recursos";
 
 const TABELA = "beneficio_campanha_conveniado";
 
+function formatarDataLocal(data: Date): string {
+  if (Number.isNaN(data.getTime())) {
+    throw new VinculoCampanhaInvalido("Data de referência inválida", 400);
+  }
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  const dia = String(data.getDate()).padStart(2, "0");
+  return `${data.getFullYear()}-${mes}-${dia}`;
+}
+
+function dataBancoValida(data: unknown): data is string {
+  if (typeof data !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(data)) return false;
+  const [ano, mes, dia] = data.split("-").map(Number);
+  return ano >= 1000 && new Date(Date.UTC(ano, mes - 1, dia)).toISOString().slice(0, 10) === data;
+}
+
 export class VinculoCampanhaInvalido extends Error {
   constructor(
     mensagem: string,
@@ -18,7 +33,7 @@ export const beneficioCampanhaConveniadoModel = {
     return listarRecurso(db, "ofertas-campanha", consulta);
   },
 
-  async validarVinculos(id: number) {
+  async validarVinculos(id: number, dataReferencia = new Date()) {
     if (!Number.isInteger(id) || id <= 0) {
       throw new VinculoCampanhaInvalido("Identificador da oferta inválido", 400);
     }
@@ -36,6 +51,8 @@ export const beneficioCampanhaConveniadoModel = {
         "oferta.status as status_oferta",
         "beneficio.status as status_beneficio",
         "campanha.status as status_campanha",
+        "campanha.data_inicio as data_inicio_campanha",
+        "campanha.data_fim as data_fim_campanha",
       )
       .first();
 
@@ -58,6 +75,13 @@ export const beneficioCampanhaConveniadoModel = {
     }
     if (vinculo.status_campanha !== "ATIVA") {
       throw new VinculoCampanhaInvalido("Campanha ou evento não está ativo", 400);
+    }
+    if (!dataBancoValida(vinculo.data_inicio_campanha) || !dataBancoValida(vinculo.data_fim_campanha)) {
+      throw new VinculoCampanhaInvalido("Período da campanha inválido", 400);
+    }
+    const hoje = formatarDataLocal(dataReferencia);
+    if (hoje < vinculo.data_inicio_campanha || hoje > vinculo.data_fim_campanha) {
+      throw new VinculoCampanhaInvalido("Campanha ou evento fora do período de vigência", 400);
     }
 
     return vinculo;

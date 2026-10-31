@@ -24,7 +24,11 @@ test("validarVinculos consulta e confere a cadeia completa", async () => {
     status_oferta: "ATIVO",
     status_beneficio: "ATIVO",
     status_campanha: "ATIVA",
+    data_inicio_campanha: "2026-10-01",
+    data_fim_campanha: "2026-10-31",
   };
+  const validar = (data: Date) => beneficioCampanhaConveniadoModel.validarVinculos(12, data);
+  const referencia = new Date(2026, 9, 15, 12);
   let resultado: unknown = valido;
   let consulta: Knex.Sql | undefined;
   cliente.runner = (builder) => ({
@@ -36,22 +40,24 @@ test("validarVinculos consulta e confere a cadeia completa", async () => {
     },
   });
   try {
-    assert.deepEqual(await beneficioCampanhaConveniadoModel.validarVinculos(12), valido);
+    assert.deepEqual(await validar(referencia), valido);
     assert.match(consulta!.sql, /left join `beneficio_campanha` as `beneficio`/);
     assert.match(consulta!.sql, /left join `campanha_evento` as `campanha`/);
     assert.match(consulta!.sql, /`oferta`\.`status`/);
     assert.match(consulta!.sql, /`beneficio`\.`status`/);
     assert.match(consulta!.sql, /`campanha`\.`status`/);
+    assert.match(consulta!.sql, /`campanha`\.`data_inicio`/);
+    assert.match(consulta!.sql, /`campanha`\.`data_fim`/);
     assert.ok(consulta!.bindings.includes(12));
     resultado = undefined;
-    await assert.rejects(beneficioCampanhaConveniadoModel.validarVinculos(12), { status: 404 });
+    await assert.rejects(validar(referencia), { status: 404 });
     for (const inconsistente of [
       { ...valido, beneficio_campanha_id_encontrado: 4 },
       { ...valido, campanha_id_encontrada: 6 },
       { ...valido, campanha_id_encontrada: null },
     ]) {
       resultado = inconsistente;
-      await assert.rejects(beneficioCampanhaConveniadoModel.validarVinculos(12), { status: 400 });
+      await assert.rejects(validar(referencia), { status: 400 });
     }
     for (const [campo, status] of [
       ["status_oferta", "INATIVO"],
@@ -59,8 +65,18 @@ test("validarVinculos consulta e confere a cadeia completa", async () => {
       ["status_campanha", "ENCERRADA"],
     ] as const) {
       resultado = { ...valido, [campo]: status };
-      await assert.rejects(beneficioCampanhaConveniadoModel.validarVinculos(12), { status: 400 });
+      await assert.rejects(validar(referencia), { status: 400 });
     }
+    resultado = valido;
+    for (const data of [new Date(2026, 9, 1, 0), new Date(2026, 9, 15, 12), new Date(2026, 9, 31, 23, 59)]) {
+      assert.deepEqual(await validar(data), valido);
+    }
+    for (const data of [new Date(2026, 8, 30, 23, 59), new Date(2026, 10, 1, 0)]) {
+      await assert.rejects(validar(data), { status: 400 });
+    }
+    await assert.rejects(validar(new Date(Number.NaN)), { status: 400 });
+    resultado = { ...valido, data_fim_campanha: "2026-02-30" };
+    await assert.rejects(validar(referencia), { status: 400 });
   } finally {
     cliente.runner = runnerOriginal;
   }
